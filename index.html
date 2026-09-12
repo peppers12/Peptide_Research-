@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#010b16">
+  <title>Peptide Research Guide</title>
+  <meta name="apple-mobile-web-app-title" content="Peptide Research">
+  <meta name="application-name" content="Peptide Research">
+  <link rel="icon" type="image/png" href="./icon-512.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="./apple-touch-icon.png">
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <main class="app">
+    <header class="head">
+      <img class="logo" src="./research-logo.jpg" alt="Peptide Research logo">
+      <div>
+        <div class="eyebrow">PEPTIDE RESEARCH</div>
+        <h1>Research Guide</h1>
+        <div class="strap">RESEARCH • COMPARE • LEARN</div>
+      </div>
+    </header>
+
+    <section class="picker-card">
+      <div class="sect">Compound research</div>
+      <button id="compoundButton" class="control picker-trigger" type="button">
+        <span id="compoundLabel">Retatrutide</span><span class="chevron">⌄</span>
+      </button>
+      <div class="mini-note"><span>110 compounds</span><span>One profile at a time</span></div>
+    </section>
+
+    <section id="profile"></section>
+
+    <footer class="note">
+      Research and educational information only. Community reports are anecdotal and are not medical or prescribing guidance.
+    </footer>
+  </main>
+
+  <div class="compound-sheet" id="compoundSheet" hidden>
+    <button class="picker-backdrop" id="pickerBackdrop" aria-label="Close"></button>
+    <section class="picker-panel">
+      <div class="picker-head"><strong>Select compound</strong><button class="picker-close" id="pickerClose">×</button></div>
+      <input class="control" id="compoundSearch" placeholder="Search compounds…">
+      <div class="picker-options" id="pickerOptions"></div>
+    </section>
+  </div>
+
+  <script src="./app.js"></script>
+</body>
+</html>
