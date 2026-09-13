@@ -30,8 +30,38 @@ function renderCOASearch(){
  if(source==='auto')cards.push(sourceCard('Broad public COA search',`Search the exact identifier <strong>${esc(raw)}</strong> across indexed public pages when the testing company is unknown.`,[{label:'Search exact identifier on the web',url:`https://www.google.com/search?q=${exact}+COA+peptide`}]));
  out.innerHTML=cards.join('');
 }
-document.getElementById('coaSearchBtn').onclick=renderCOASearch;
-document.getElementById('coaQuery').addEventListener('keydown',e=>{if(e.key==='Enter')renderCOASearch()});
+const coaSearchBtn=document.getElementById('coaSearchBtn');
+const coaQuery=document.getElementById('coaQuery');
+const coaResults=document.getElementById('coaResults');
+
+function runCOASearch(){
+  if(!coaSearchBtn||!coaQuery||!coaResults)return;
+  coaSearchBtn.disabled=true;
+  coaSearchBtn.textContent='Searching…';
+  try{
+    renderCOASearch();
+    if(coaQuery.value.trim()){
+      setTimeout(()=>coaResults.scrollIntoView({behavior:'smooth',block:'start'}),50);
+    }
+  }catch(err){
+    console.error('COA search error:',err);
+    coaResults.innerHTML='<article class="card"><div class="coa-empty">Search could not run. Please try again.</div></article>';
+  }finally{
+    setTimeout(()=>{
+      coaSearchBtn.disabled=false;
+      coaSearchBtn.textContent='Search COA Sources';
+    },250);
+  }
+}
+
+if(coaSearchBtn)coaSearchBtn.addEventListener('click',runCOASearch);
+if(coaQuery)coaQuery.addEventListener('keydown',e=>{
+  if(e.key==='Enter'){
+    e.preventDefault();
+    runCOASearch();
+  }
+});
+
 setMode(localStorage.getItem('research:mode')==='coa'?'coa':'research');
 
 render(compounds.includes(localStorage.getItem('research:last'))?localStorage.getItem('research:last'):'Retatrutide');
