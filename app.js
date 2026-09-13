@@ -44,23 +44,120 @@ function extractCOAFields(text){
  const upper=text.toUpperCase();
  const lot=firstMatch(upper,[/(?:LOT|LOT\s*NUMBER|BATCH|BATCH\s*NUMBER|BATCH\s*NO\.?)[\s:#-]+([A-Z0-9][A-Z0-9._\/-]{2,35})/i]);
  const report=firstMatch(upper,[/(?:REPORT|REPORT\s*NO\.?|REPORT\s*NUMBER|COA|COA\s*NO\.?|COA\s*NUMBER|ACCESSION|ACCESSION\s*NUMBER)[\s:#-]+([A-Z0-9][A-Z0-9._\/-]{2,40})/i]);
+ const searchCode=firstMatch(upper,[/(?:SEARCH\s*CODE)[\s:#-]+([A-Z0-9][A-Z0-9._\/-]{3,50})/i]);
  const access=firstMatch(upper,[/(?:ACCESS\s*CODE|VERIFICATION\s*CODE|SECURITY\s*KEY|UNIQUE\s*KEY|VERIFY\s*KEY|KEY)[\s:#-]+([A-Z0-9][A-Z0-9._\/-]{3,40})/i]);
  const task=firstMatch(upper,[/(?:TASK|TASK\s*NUMBER|TASK\s*NO\.?)[\s:#-]+(\d{4,10})/i]);
- return{lot,report,access,task};
+ return{lot,report,searchCode,access,task};
 }
+
+function cleanOCRValue(v){
+ return (v||'').replace(/\s{2,}/g,' ').replace(/^[\s:;#-]+|[\s|]+$/g,'').trim();
+}
+function lineValue(text,labels){
+ const lines=String(text||'').split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
+ for(const line of lines){
+  for(const label of labels){
+   const m=line.match(new RegExp('^'+label+'\\s*[:#-]?\\s*(.+)$','i'));
+   if(m&&m[1])return cleanOCRValue(m[1]);
+  }
+ }
+ return'';
+}
+function nearbyResult(text,labels){
+ const lines=String(text||'').split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
+ for(let i=0;i<lines.length;i++){
+  if(labels.some(r=>r.test(lines[i]))){
+   const chunk=[lines[i],lines[i+1]||'',lines[i+2]||''].join(' ');
+   const explicit=chunk.match(/\b(PASS(?:ED)?|COMPLIANT|CONFORMS?|NEGATIVE|NOT DETECTED|ND|FAIL(?:ED)?|NON[- ]?COMPLIANT|POSITIVE)\b/i);
+   const value=chunk.match(/(?:<|>|≤|≥)?\s*\d+(?:\.\d+)?\s*(?:%|EU\/MG|EU\/ML|CFU\/G|CFU\/ML|MG|MCG|NG\/G|PPM|PPB)\b/i);
+   if(explicit)return cleanOCRValue(explicit[0]);
+   if(value)return cleanOCRValue(value[0]);
+   return cleanOCRValue(lines[i].replace(/^.*?(?:[:\-])\s*/,''));
+  }
+ }
+ return'';
+}
+function extractCOASummary(text,lab,fields){
+ const product=lineValue(text,['PRODUCT(?: NAME)?','COMPOUND','PEPTIDE','SAMPLE(?: NAME)?']);
+ const vendor=lineValue(text,['CLIENT(?: NAME)?','VENDOR','COMPANY','CUSTOMER']);
+ const testDate=lineValue(text,['DATE REPORTED','REPORT DATE','TEST DATE','DATE TESTED','DATE OF ANALYSIS','ANALYSIS DATE']);
+ const purity=lineValue(text,['PURITY(?: BY HPLC)?','HPLC PURITY','PURITY RESULT']) ||
+   ((String(text).match(/\b(?:PURITY|HPLC)\b[^\n]{0,45}?(\d{2,3}(?:\.\d+)?)\s*%/i)||[])[1] ? ((String(text).match(/\b(?:PURITY|HPLC)\b[^\n]{0,45}?(\d{2,3}(?:\.\d+)?)\s*%/i)||[])[1]+'%') : '');
+ const quantity=lineValue(text,['NET PEPTIDE CONTENT','PEPTIDE CONTENT','NET CONTENT','QUANTITY','MASS']);
+ const identity=lineValue(text,['IDENTITY(?: RESULT)?','IDENTIFICATION']) || nearbyResult(text,[/\bIDENTITY\b/i,/\bMASS\s+SPEC(?:TROMETRY)?\b/i]);
+ const sterility=nearbyResult(text,[/\bSTERILITY\b/i]);
+ const endotoxin=nearbyResult(text,[/\bENDOTOXIN\b/i,/\bLAL\b/i]);
+ const heavyMetals=nearbyResult(text,[/\bHEAVY\s+METALS?\b/i,/\bICP[- ]?MS\b/i]);
+ const microbial=nearbyResult(text,[/\bMICROBIAL\b/i,/\bMICROBIOLOG(?:Y|ICAL)\b/i,/\bTOTAL\s+PLATE\s+COUNT\b/i]);
+ return{
+  product,vendor,lab:lab?.name||'',lot:fields?.lot||'',report:fields?.searchCode||fields?.report||fields?.task||'',
+  testDate,purity,quantity,identity,sterility,endotoxin,heavyMetals,microbial
+ };
+}
+function resultTone(value){
+ const v=String(value||'').toUpperCase();
+ if(!v)return'missing';
+ if(/\b(FAIL|FAILED|NON[- ]?COMPLIANT|POSITIVE)\b/.test(v))return'fail';
+ if(/\b(PASS|PASSED|COMPLIANT|CONFORM|NEGATIVE|NOT DETECTED|ND)\b/.test(v))return'pass';
+ return'info';
+}
+function summaryCell(label,value,{test=false}={}){
+ const shown=value||'Not listed / not read';
+ const tone=value?(test?resultTone(value):'info'):'missing';
+ return `<div class="coa-summary-cell ${tone}"><span>${label}</span><strong>${esc(shown)}</strong></div>`;
+}
+function renderCOASummary(summary){
+ const tested=[
+  ['Identity',summary.identity],
+  ['Sterility',summary.sterility],
+  ['Endotoxin',summary.endotoxin],
+  ['Heavy metals',summary.heavyMetals],
+  ['Microbial',summary.microbial]
+ ];
+ const explicitFail=tested.some(([,v])=>resultTone(v)==='fail');
+ const explicitPass=tested.some(([,v])=>resultTone(v)==='pass');
+ const badge=explicitFail?['Review result','fail']:explicitPass?['Results detected','pass']:['OCR summary','info'];
+ return `<article class="card coa-summary-card">
+   <div class="coa-summary-head">
+     <div><div class="section-title">COA Results Summary</div><h3>${esc(summary.product||'Certificate analysis')}</h3></div>
+     <span class="coa-summary-badge ${badge[1]}">${badge[0]}</span>
+   </div>
+   <div class="coa-summary-grid">
+     ${summaryCell('Vendor / company',summary.vendor)}
+     ${summaryCell('Testing lab',summary.lab)}
+     ${summaryCell('Lot / batch',summary.lot)}
+     ${summaryCell('Report / search code',summary.report)}
+     ${summaryCell('Test date',summary.testDate)}
+     ${summaryCell('Purity',summary.purity)}
+     ${summaryCell('Net peptide content',summary.quantity)}
+     ${summaryCell('Identity',summary.identity,{test:true})}
+     ${summaryCell('Sterility',summary.sterility,{test:true})}
+     ${summaryCell('Endotoxin',summary.endotoxin,{test:true})}
+     ${summaryCell('Heavy metals',summary.heavyMetals,{test:true})}
+     ${summaryCell('Microbial',summary.microbial,{test:true})}
+   </div>
+   <div class="coa-summary-note">“Not listed / not read” means the OCR did not find that result. It does not mean the sample failed that test. Confirm all values against the original COA.</div>
+ </article>`;
+}
+
 function qrOfficial(url){try{const u=new URL(url);return /janoshik\.com|freedomdiagnosticstesting\.com|verifiedbyvanguard\.com|ils-lab\.com|horizonanalytical\.com|bioregen\.com|trustpointelims\.com|trustpointeanalytics\.com|chromate\.org|disclosedlabs\.com/i.test(u.hostname)}catch{return false}}
 
 function disclosedLotURL(lot){return'https://www.disclosedlabs.com/lot/'+encodeURIComponent(lot)}
 function genericSearchURL(raw){return'https://www.google.com/search?q='+encodeURIComponent('"'+raw+'" COA peptide')}
-function fieldRows(f){return[['Lot / batch',f.lot],['Report / COA / accession',f.report],['Task number',f.task],['Access / unique / security key',f.access]].filter(x=>x[1]).map(x=>`<div class="coa-field"><span>${x[0]}</span><strong>${esc(x[1])}</strong></div>`).join('')}
+function fieldRows(f){return[['Lot / batch',f.lot],['Search Code',f.searchCode],['Report / COA / accession',f.report],['Task number',f.task],['Access / unique / security key',f.access]].filter(x=>x[1]).map(x=>`<div class="coa-field"><span>${x[0]}</span><strong>${esc(x[1])}</strong></div>`).join('')}
 function resultCard(lab,fields,qrUrl,textNote=''){
- const best=fields.lot||fields.report||fields.access||fields.task||'';
+ const best=fields.searchCode||fields.lot||fields.report||fields.access||fields.task||'';
  const links=[];
  if(qrUrl&&qrOfficial(qrUrl))links.push({label:'Open QR Verification',url:qrUrl});
- if(lab)links.push({label:`Verify at ${lab.name}`,url:lab.url});
+ if(lab&&lab.id!=='freedom')links.push({label:`Verify at ${lab.name}`,url:lab.url});
+ if(lab&&lab.id==='freedom'){
+   const freedomCode=fields.searchCode||fields.report||fields.lot||'';
+   if(freedomCode)links.push({label:'Copy Search Code & Open Freedom',url:'#',action:`freedom:${encodeURIComponent(freedomCode)}`});
+   else links.push({label:'Open Freedom Diagnostics',url:lab.url});
+ }
  if(fields.lot)links.push({label:'Search Lot on Disclosed Labs',url:disclosedLotURL(fields.lot)});
  if(best)links.push({label:'Broad Exact COA Search',url:genericSearchURL(best)});
- return`<article class="card"><div class="coa-result-title"><strong>${lab?'Likely lab: '+esc(lab.name):'Lab not confidently identified'}</strong><span class="coa-status">${lab?'Detected':'Review'}</span></div>${textNote?`<p class="copy">${textNote}</p>`:''}<div class="coa-fields">${fieldRows(fields)||'<div class="coa-empty">No labeled identifiers were read clearly. Try a sharper screenshot or use manual search.</div>'}</div><div class="coa-actions">${links.map(x=>`<a class="coa-link" target="_blank" rel="noopener" href="${x.url}">${x.label}</a>`).join('')}</div>${lab?`<div class="coa-help">${lab.note}</div>`:'<div class="coa-help">Use the source buttons below or manually enter the clearest lot/report number you can read.</div>'}</article>`;
+ return`<article class="card"><div class="coa-result-title"><strong>${lab?'Likely lab: '+esc(lab.name):'Lab not confidently identified'}</strong><span class="coa-status">${lab?'Detected':'Review'}</span></div>${textNote?`<p class="copy">${textNote}</p>`:''}<div class="coa-fields">${fieldRows(fields)||'<div class="coa-empty">No labeled identifiers were read clearly. Try a sharper screenshot or use manual search.</div>'}</div><div class="coa-actions">${links.map(x=>x.action?`<button class="coa-link coa-action-btn" type="button" data-coa-action="${x.action}">${x.label}</button>`:`<a class="coa-link" target="_blank" rel="noopener" href="${x.url}">${x.label}</a>`).join('')}</div>${lab?`<div class="coa-help">${lab.note}</div>`:'<div class="coa-help">Use the source buttons below or manually enter the clearest lot/report number you can read.</div>'}</article>`;
 }
 function unknownLabButtons(){return`<article class="card"><div class="section-title">Official verification sites</div><div class="coa-actions">${coaLabs.map(l=>`<a class="coa-link" target="_blank" rel="noopener" href="${l.url}">${l.name}</a>`).join('')}<a class="coa-link" target="_blank" rel="noopener" href="https://www.disclosedlabs.com/coas">Disclosed Labs COA Index</a></div></article>`}
 
@@ -73,6 +170,19 @@ function manualCOASearch(){
  coaResults.innerHTML=resultCard(lab,fields,'','Use the detected identifier to search the broad COA index or open an official laboratory verifier.')+unknownLabButtons();
  coaResults.scrollIntoView({behavior:'smooth',block:'start'});
 }
+
+
+async function handleCOAAction(e){
+ const btn=e.target.closest('[data-coa-action]');if(!btn)return;
+ const action=btn.dataset.coaAction||'';
+ if(action.startsWith('freedom:')){
+   const code=decodeURIComponent(action.slice(8));
+   try{await navigator.clipboard.writeText(code);btn.textContent='Search Code copied ✓';}
+   catch{btn.textContent='Copy this code: '+code;}
+   setTimeout(()=>window.open('https://freedomdiagnosticstesting.com/search-for-your-coa-based-on-the-unique-accession-number/','_blank','noopener'),180);
+ }
+}
+if(coaResults)coaResults.addEventListener('click',handleCOAAction);
 
 async function detectQR(file){
  if(!('BarcodeDetector'in window))return'';
@@ -96,7 +206,8 @@ async function analyzeCOAImage(){
   }
   if(lab?.id==='ils'&&!fields.access)fields.access=firstMatch(text,[/(?:ACCESS\s*CODE)[\s:#-]+([A-Z0-9]{6,12})/i]);
   if(lab?.id==='bioregen'&&!fields.access)fields.access=firstMatch(text,[/(?:SECURITY\s*KEY)[\s:#-]+([A-Z0-9]{6,30})/i]);
-  coaResults.innerHTML=resultCard(lab,fields,qr,lab?'The screenshot appears to match this laboratory. Confirm the details on the official site before treating it as verified.':'I could not confidently identify the laboratory from the screenshot.')+(!lab?unknownLabButtons():'');
+  const summary=extractCOASummary(text,lab,fields);
+  coaResults.innerHTML=renderCOASummary(summary)+resultCard(lab,fields,qr,lab?'The screenshot appears to match this laboratory. Confirm the details on the official site before treating it as verified.':'I could not confidently identify the laboratory from the screenshot.')+(!lab?unknownLabButtons():'');
   coaResults.scrollIntoView({behavior:'smooth',block:'start'});
  }catch(err){
   console.error(err);coaResults.innerHTML='<article class="card"><div class="coa-empty">I could not read this image in the browser. Try a clearer screenshot, or enter the lot/report number manually below.</div></article>'+unknownLabButtons();
