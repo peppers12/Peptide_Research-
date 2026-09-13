@@ -43,38 +43,31 @@
       <article class="card coa-hero">
         <div class="sect">Certificate verification</div>
         <h2>COA Search</h2>
-        <p class="copy">Search by lot, batch, COA, accession or report number across supported public verification sources.</p>
+        <p class="copy">Enter the lot or batch number printed on the vial or COA. Search opens the matching Disclosed Labs lot page.</p>
       </article>
 
       <article class="card">
-        <div class="section-title">Search identifier</div>
-        <input class="control" id="coaQuery" autocomplete="off" placeholder="Lot / Batch / COA / Report #">
-        <select class="control coa-source-select" id="coaSource">
-          <option value="auto">Auto / All supported sources</option>
-          <option value="ion">ION Peptide</option>
-          <option value="freedom">Freedom Diagnostics</option>
-          <option value="janoshik">Janoshik</option>
-          <option value="chromate">Chromate</option>
-        </select>
-        <button class="coa-search-btn" id="coaSearchBtn" type="button">Search COA Sources</button>
-        <div class="coa-help">Janoshik works best when you paste both the task number and unique key from the report.</div>
+        <div class="section-title">Lot / batch number</div>
+        <input class="control" id="coaQuery" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="Example: RT200326">
+        <button class="coa-search-btn" id="coaSearchBtn" type="button">Search Disclosed Labs</button>
+        <div class="coa-help">Disclosed Labs aggregates public COAs from multiple testing labs and vendors. If the lot is indexed, its matching record(s) will be shown there.</div>
       </article>
 
       <div id="coaResults"></div>
 
       <article class="card">
-        <div class="section-title">Supported sources</div>
+        <div class="section-title">COA source</div>
         <div class="coa-source-list">
-          <div class="coa-source-item"><strong>ION Peptide</strong><span>Product and batch COA library</span></div>
-          <div class="coa-source-item"><strong>Freedom Diagnostics</strong><span>Search Code, accession number or company</span></div>
-          <div class="coa-source-item"><strong>Janoshik</strong><span>Task number + unique key verification</span></div>
-          <div class="coa-source-item"><strong>Chromate</strong><span>Verification-code portal</span></div>
+          <div class="coa-source-item"><strong>Disclosed Labs</strong><span>Lot lookup across its indexed public COA corpus</span></div>
+        </div>
+        <div class="coa-actions">
+          <a class="coa-link" target="_blank" rel="noopener" href="https://www.disclosedlabs.com/coas">Browse Disclosed Labs COAs</a>
         </div>
       </article>
 
       <article class="card coa-caution">
         <div class="section-title">What a match means</div>
-        <p class="copy">A matching report confirms that the source published a COA with those identifiers. It does not by itself prove that a vial, seller or physical sample is the same material that was tested.</p>
+        <p class="copy">A matching COA record shows that Disclosed Labs has indexed a report using that lot or batch identifier. Always compare the original report, vendor, testing lab and product details with the item you are checking.</p>
       </article>
     </section>
 

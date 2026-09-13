@@ -17,48 +17,47 @@ function setMode(mode){const c=mode==='coa';researchView.hidden=c;coaView.hidden
 researchTab.onclick=()=>setMode('research');coaTab.onclick=()=>setMode('coa');
 
 function esc(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
-function sourceCard(name,note,links){return `<article class="card"><div class="coa-result-title"><strong>${name}</strong><span class="coa-status">Source</span></div><p class="copy">${note}</p><div class="coa-actions">${links.map(x=>`<a class="coa-link" target="_blank" rel="noopener" href="${x.url}">${x.label}</a>`).join('')}</div></article>`}
-function janoshikParts(raw){const task=(raw.match(/\b(\d{4,8})\b/)||[])[1];const tokens=raw.toUpperCase().match(/\b[A-Z0-9]{8,20}\b/g)||[];const key=tokens.find(t=>!(/^\d+$/.test(t))&&t!==task);return{task,key}}
-function renderCOASearch(){
- const raw=document.getElementById('coaQuery').value.trim(),source=document.getElementById('coaSource').value,out=document.getElementById('coaResults');
- if(!raw){out.innerHTML='<article class="card"><div class="coa-empty">Enter a lot, batch, COA, accession or report number.</div></article>';return}
- const exact=encodeURIComponent('"'+raw+'"'),cards=[];
- if(source==='auto'||source==='ion')cards.push(sourceCard('ION Peptide',`Search ION’s official COA library for <strong>${esc(raw)}</strong>. ION organizes reports by product and batch number.`,[{label:'Open ION COA Library',url:'https://ionpeptide.com/lab-results/'},{label:'Exact search for this ION batch',url:`https://www.google.com/search?q=${exact}+site%3Aionpeptide.com%2Fproduct%2F`}]));
- if(source==='auto'||source==='freedom')cards.push(sourceCard('Freedom Diagnostics',`Freedom’s public lookup supports Search Code, accession number and company searches. Try <strong>${esc(raw)}</strong> in the official lookup.`,[{label:'Open Freedom COA Lookup',url:'https://freedomdiagnosticstesting.com/search-for-your-coa-based-on-the-unique-accession-number/'},{label:'Exact search for this COA',url:`https://www.google.com/search?q=${exact}+site%3Acoas.freedomdiagnosticstesting.com`}]));
- if(source==='auto'||source==='janoshik'){const p=janoshikParts(raw),direct=(p.task&&p.key)?`https://janoshik.com/verification/?key=${encodeURIComponent(p.key)}&task=${encodeURIComponent(p.task)}`:'https://janoshik.com/verification/';cards.push(sourceCard('Janoshik',p.task&&p.key?`Detected task <strong>${esc(p.task)}</strong> and unique key <strong>${esc(p.key)}</strong>.`:`Janoshik requires both a <strong>Task number</strong> and <strong>Unique key</strong>. Paste both from the COA for a direct verification link.`,[{label:p.task&&p.key?'Verify this Janoshik report':'Open Janoshik Verification',url:direct}]))}
- if(source==='auto'||source==='chromate'){const c=raw.replace(/\s+/g,'');cards.push(sourceCard('Chromate',`Chromate uses a verification-code portal. If <strong>${esc(raw)}</strong> is the code printed with the report, try it directly.`,[{label:'Try Chromate verification code',url:`https://chromate.org/verify?c=${encodeURIComponent(c)}`},{label:'Open Chromate Verify',url:'https://chromate.org/verify'}]))}
- if(source==='auto')cards.push(sourceCard('Broad public COA search',`Search the exact identifier <strong>${esc(raw)}</strong> across indexed public pages when the testing company is unknown.`,[{label:'Search exact identifier on the web',url:`https://www.google.com/search?q=${exact}+COA+peptide`}]));
- out.innerHTML=cards.join('');
-}
 const coaSearchBtn=document.getElementById('coaSearchBtn');
 const coaQuery=document.getElementById('coaQuery');
 const coaResults=document.getElementById('coaResults');
 
-function runCOASearch(){
-  if(!coaSearchBtn||!coaQuery||!coaResults)return;
-  coaSearchBtn.disabled=true;
-  coaSearchBtn.textContent='Searching…';
-  try{
-    renderCOASearch();
-    if(coaQuery.value.trim()){
-      setTimeout(()=>coaResults.scrollIntoView({behavior:'smooth',block:'start'}),50);
-    }
-  }catch(err){
-    console.error('COA search error:',err);
-    coaResults.innerHTML='<article class="card"><div class="coa-empty">Search could not run. Please try again.</div></article>';
-  }finally{
-    setTimeout(()=>{
-      coaSearchBtn.disabled=false;
-      coaSearchBtn.textContent='Search COA Sources';
-    },250);
+function searchDisclosedLabs(){
+  if(!coaQuery||!coaResults)return;
+  const raw=coaQuery.value.trim();
+  if(!raw){
+    coaResults.innerHTML='<article class="card"><div class="coa-empty">Enter the lot or batch number first.</div></article>';
+    coaQuery.focus();
+    return;
   }
+
+  const lot=raw.replace(/^LOT[\s:#-]*/i,'').trim();
+  if(!lot){
+    coaResults.innerHTML='<article class="card"><div class="coa-empty">Enter a valid lot or batch number.</div></article>';
+    return;
+  }
+
+  if(coaSearchBtn){
+    coaSearchBtn.disabled=true;
+    coaSearchBtn.textContent='Opening Disclosed Labs…';
+  }
+
+  coaResults.innerHTML=`<article class="card"><div class="coa-result-title"><strong>Searching Disclosed Labs</strong><span class="coa-status">Lot lookup</span></div><p class="copy">Opening results for <strong>${esc(lot)}</strong>…</p></article>`;
+
+  const url='https://www.disclosedlabs.com/lot/'+encodeURIComponent(lot);
+  setTimeout(()=>{
+    window.location.href=url;
+    if(coaSearchBtn){
+      coaSearchBtn.disabled=false;
+      coaSearchBtn.textContent='Search Disclosed Labs';
+    }
+  },180);
 }
 
-if(coaSearchBtn)coaSearchBtn.addEventListener('click',runCOASearch);
+if(coaSearchBtn)coaSearchBtn.addEventListener('click',searchDisclosedLabs);
 if(coaQuery)coaQuery.addEventListener('keydown',e=>{
   if(e.key==='Enter'){
     e.preventDefault();
-    runCOASearch();
+    searchDisclosedLabs();
   }
 });
 
