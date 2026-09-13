@@ -43,22 +43,26 @@
       <article class="card coa-hero">
         <div class="sect">Certificate verification</div>
         <h2>COA Search</h2>
-        <p class="copy">Upload a COA screenshot or enter an identifier. The app will try to identify the testing lab, read the important numbers and send you to the correct official verification page.</p>
+        <p class="copy">Upload a COA image or PDF, or enter an identifier. The app will try to identify the testing lab, read the important results and send you to the correct official verification page.</p>
       </article>
 
       <article class="card">
-        <div class="section-title">Upload COA screenshot</div>
+        <div class="section-title">Upload COA</div>
         <label class="coa-upload" for="coaImage">
           <span class="coa-upload-icon">▣</span>
-          <strong>Choose COA Screenshot</strong>
-          <span>Photo, screenshot or saved image</span>
+          <strong>Choose COA</strong>
+          <span>Photo, screenshot or PDF</span>
         </label>
-        <input id="coaImage" type="file" accept="image/*" hidden>
+        <input id="coaImage" type="file" accept="image/*,application/pdf,.pdf" hidden>
         <div id="coaPreviewWrap" class="coa-preview-wrap" hidden>
           <img id="coaPreview" class="coa-preview" alt="COA preview">
+          <div id="coaPdfPreview" class="coa-pdf-preview" hidden>
+            <span class="coa-pdf-icon">PDF</span>
+            <div><strong id="coaPdfName">COA document</strong><span>PDF selected</span></div>
+          </div>
           <button class="coa-search-btn" id="coaAnalyzeBtn" type="button">Read & Identify COA</button>
         </div>
-        <div class="coa-help">The image is read in your browser. OCR quality depends on how clear and straight the screenshot is.</div>
+        <div class="coa-help">Images use OCR. For PDFs, the app first reads embedded text; scanned PDFs are converted to images and read with OCR in your browser.</div>
       </article>
 
       <article class="card">
@@ -106,6 +110,7 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
   <script src="./app.js"></script>
 </body>
 </html>

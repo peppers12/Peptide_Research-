@@ -23,6 +23,8 @@ const coaResults=document.getElementById('coaResults');
 const coaImage=document.getElementById('coaImage');
 const coaPreview=document.getElementById('coaPreview');
 const coaPreviewWrap=document.getElementById('coaPreviewWrap');
+const coaPdfPreview=document.getElementById('coaPdfPreview');
+const coaPdfName=document.getElementById('coaPdfName');
 const coaAnalyzeBtn=document.getElementById('coaAnalyzeBtn');
 let coaImageURL='';
 
@@ -188,16 +190,90 @@ async function detectQR(file){
  if(!('BarcodeDetector'in window))return'';
  try{const d=new BarcodeDetector({formats:['qr_code']});const bmp=await createImageBitmap(file);const codes=await d.detect(bmp);bmp.close();return codes[0]?.rawValue||''}catch{return''}
 }
+
+function isPDFFile(file){
+ return !!file && (file.type==='application/pdf' || /\.pdf$/i.test(file.name||''));
+}
+async function loadPDFDocument(file){
+ if(!window.pdfjsLib)throw new Error('PDF reader unavailable');
+ pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
+ const data=await file.arrayBuffer();
+ return await pdfjsLib.getDocument({data}).promise;
+}
+async function extractPDFText(pdf){
+ let text='';
+ const maxPages=Math.min(pdf.numPages,12);
+ for(let pageNo=1;pageNo<=maxPages;pageNo++){
+  const p=document.getElementById('coaProgress');
+  if(p)p.textContent=`Reading PDF text… page ${pageNo} of ${maxPages}`;
+  const page=await pdf.getPage(pageNo);
+  const content=await page.getTextContent();
+  text += '\n' + content.items.map(i=>i.str).join(' ');
+ }
+ return text.trim();
+}
+async function renderPDFPage(page,scale=1.65){
+ const viewport=page.getViewport({scale});
+ const canvas=document.createElement('canvas');
+ const ctx=canvas.getContext('2d',{willReadFrequently:true});
+ canvas.width=Math.ceil(viewport.width);
+ canvas.height=Math.ceil(viewport.height);
+ await page.render({canvasContext:ctx,viewport}).promise;
+ return canvas;
+}
+async function ocrPDFPages(pdf){
+ if(!window.Tesseract)throw new Error('OCR library unavailable');
+ let text='';
+ const maxPages=Math.min(pdf.numPages,4);
+ for(let pageNo=1;pageNo<=maxPages;pageNo++){
+  const page=await pdf.getPage(pageNo);
+  const canvas=await renderPDFPage(page);
+  const res=await Tesseract.recognize(canvas,'eng',{logger:m=>{
+   const p=document.getElementById('coaProgress');
+   if(p&&m.status==='recognizing text')p.textContent=`Reading scanned PDF… page ${pageNo} of ${maxPages} · ${Math.round((m.progress||0)*100)}%`;
+  }});
+  text += '\n' + (res?.data?.text||'');
+ }
+ return text.trim();
+}
+async function detectQRFromPDF(pdf){
+ if(!('BarcodeDetector' in window))return'';
+ try{
+  const page=await pdf.getPage(1);
+  const canvas=await renderPDFPage(page,1.5);
+  const d=new BarcodeDetector({formats:['qr_code']});
+  const codes=await d.detect(canvas);
+  return codes[0]?.rawValue||'';
+ }catch{return''}
+}
+
 async function analyzeCOAImage(){
  const file=coaImage?.files?.[0];if(!file)return;
  coaAnalyzeBtn.disabled=true;coaAnalyzeBtn.textContent='Reading COA…';
- coaResults.innerHTML='<article class="card"><div class="coa-result-title"><strong>Reading screenshot</strong><span class="coa-status">OCR</span></div><p class="copy" id="coaProgress">Looking for lab name, lot/batch, report number and verification code…</p></article>';
+ const pdfMode=isPDFFile(file);
+ coaResults.innerHTML=`<article class="card"><div class="coa-result-title"><strong>Reading ${pdfMode?'PDF':'COA image'}</strong><span class="coa-status">${pdfMode?'PDF':'OCR'}</span></div><p class="copy" id="coaProgress">Looking for lab name, lot/batch, report number, verification code and test results…</p></article>`;
  try{
-  const qrPromise=detectQR(file);
-  if(!window.Tesseract)throw new Error('OCR library unavailable');
-  const res=await Tesseract.recognize(file,'eng',{logger:m=>{const p=document.getElementById('coaProgress');if(p&&m.status==='recognizing text')p.textContent='Reading text… '+Math.round((m.progress||0)*100)+'%'}});
-  const text=res?.data?.text||'';
-  const qr=await qrPromise;
+  let text='',qr='';
+  if(pdfMode){
+   const pdf=await loadPDFDocument(file);
+   text=await extractPDFText(pdf);
+   qr=await detectQRFromPDF(pdf);
+   if(text.replace(/\s+/g,' ').trim().length<80){
+    const p=document.getElementById('coaProgress');
+    if(p)p.textContent='This looks like a scanned PDF. Switching to OCR…';
+    text=await ocrPDFPages(pdf);
+   }
+  }else{
+   const qrPromise=detectQR(file);
+   if(!window.Tesseract)throw new Error('OCR library unavailable');
+   const res=await Tesseract.recognize(file,'eng',{logger:m=>{
+    const p=document.getElementById('coaProgress');
+    if(p&&m.status==='recognizing text')p.textContent='Reading text… '+Math.round((m.progress||0)*100)+'%';
+   }});
+   text=res?.data?.text||'';
+   qr=await qrPromise;
+  }
+
   const lab=labFromText(text+' '+qr);
   const fields=extractCOAFields(text);
   if(lab?.id==='janoshik'){
@@ -206,15 +282,24 @@ async function analyzeCOAImage(){
   }
   if(lab?.id==='ils'&&!fields.access)fields.access=firstMatch(text,[/(?:ACCESS\s*CODE)[\s:#-]+([A-Z0-9]{6,12})/i]);
   if(lab?.id==='bioregen'&&!fields.access)fields.access=firstMatch(text,[/(?:SECURITY\s*KEY)[\s:#-]+([A-Z0-9]{6,30})/i]);
+
   const summary=extractCOASummary(text,lab,fields);
-  coaResults.innerHTML=renderCOASummary(summary)+resultCard(lab,fields,qr,lab?'The screenshot appears to match this laboratory. Confirm the details on the official site before treating it as verified.':'I could not confidently identify the laboratory from the screenshot.')+(!lab?unknownLabButtons():'');
+  coaResults.innerHTML=renderCOASummary(summary)+resultCard(
+   lab,fields,qr,
+   lab
+    ?`The ${pdfMode?'PDF':'image'} appears to match this laboratory. Confirm the details on the official site before treating it as verified.`
+    :`I could not confidently identify the laboratory from this ${pdfMode?'PDF':'image'}.`
+  )+(!lab?unknownLabButtons():'');
   coaResults.scrollIntoView({behavior:'smooth',block:'start'});
  }catch(err){
-  console.error(err);coaResults.innerHTML='<article class="card"><div class="coa-empty">I could not read this image in the browser. Try a clearer screenshot, or enter the lot/report number manually below.</div></article>'+unknownLabButtons();
- }finally{coaAnalyzeBtn.disabled=false;coaAnalyzeBtn.textContent='Read & Identify COA'}
+  console.error(err);
+  coaResults.innerHTML='<article class="card"><div class="coa-empty">I could not read this COA in the browser. Try a clearer image/PDF, or enter the lot/report number manually below.</div></article>'+unknownLabButtons();
+ }finally{
+  coaAnalyzeBtn.disabled=false;
+  coaAnalyzeBtn.textContent='Read & Identify COA';
+ }
 }
-
-if(coaImage)coaImage.addEventListener('change',()=>{const f=coaImage.files?.[0];if(!f)return;if(coaImageURL)URL.revokeObjectURL(coaImageURL);coaImageURL=URL.createObjectURL(f);coaPreview.src=coaImageURL;coaPreviewWrap.hidden=false;coaResults.innerHTML='';});
+if(coaImage)coaImage.addEventListener('change',()=>{const f=coaImage.files?.[0];if(!f)return;if(coaImageURL)URL.revokeObjectURL(coaImageURL);coaImageURL='';coaPreviewWrap.hidden=false;coaResults.innerHTML='';if(isPDFFile(f)){coaPreview.hidden=true;if(coaPdfPreview)coaPdfPreview.hidden=false;if(coaPdfName)coaPdfName.textContent=f.name||'COA PDF';}else{if(coaPdfPreview)coaPdfPreview.hidden=true;coaPreview.hidden=false;coaImageURL=URL.createObjectURL(f);coaPreview.src=coaImageURL;}});
 if(coaAnalyzeBtn)coaAnalyzeBtn.addEventListener('click',analyzeCOAImage);
 if(coaSearchBtn)coaSearchBtn.addEventListener('click',manualCOASearch);
 if(coaQuery)coaQuery.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();manualCOASearch()}});
