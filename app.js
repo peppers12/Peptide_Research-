@@ -46,7 +46,7 @@ function extractCOAFields(text){
  const upper=text.toUpperCase();
  const lot=firstMatch(upper,[/(?:LOT|LOT\s*NUMBER|BATCH|BATCH\s*NUMBER|BATCH\s*NO\.?)[\s:#-]+([A-Z0-9][A-Z0-9._\/-]{2,35})/i]);
  const report=firstMatch(upper,[/(?:REPORT|REPORT\s*NO\.?|REPORT\s*NUMBER|COA|COA\s*NO\.?|COA\s*NUMBER|ACCESSION|ACCESSION\s*NUMBER)[\s:#-]+([A-Z0-9][A-Z0-9._\/-]{2,40})/i]);
- const searchCode=firstMatch(upper,[/(?:SEARCH\s*CODE)[\s:#-]+([A-Z0-9][A-Z0-9._\/-]{3,50})/i]);
+ const searchCode=firstMatch(text,[/(?:SEARCH\s*CODE)[\s:#-]+([A-Z0-9][A-Z0-9._\/-]{3,50})/i]);
  const access=firstMatch(upper,[/(?:ACCESS\s*CODE|VERIFICATION\s*CODE|SECURITY\s*KEY|UNIQUE\s*KEY|VERIFY\s*KEY|KEY)[\s:#-]+([A-Z0-9][A-Z0-9._\/-]{3,40})/i]);
  const task=firstMatch(upper,[/(?:TASK|TASK\s*NUMBER|TASK\s*NO\.?)[\s:#-]+(\d{4,10})/i]);
  return{lot,report,searchCode,access,task};
@@ -154,13 +154,27 @@ function resultCard(lab,fields,qrUrl,textNote=''){
  if(lab&&lab.id!=='freedom')links.push({label:`Verify at ${lab.name}`,url:lab.url});
  if(lab&&lab.id==='freedom'){
    const freedomCode=fields.searchCode||fields.report||fields.lot||'';
-   if(freedomCode)links.push({label:'Copy Search Code & Open Freedom',url:'#',action:`freedom:${encodeURIComponent(freedomCode)}`});
-   else links.push({label:'Open Freedom Diagnostics',url:lab.url});
+   if(freedomCode){
+     links.push({label:'Confirm Search Code & Open Freedom',url:'#',action:`freedom-confirm:${encodeURIComponent(freedomCode)}`});
+   }else links.push({label:'Open Freedom Diagnostics',url:lab.url});
  }
  if(fields.lot)links.push({label:'Search Lot on Disclosed Labs',url:disclosedLotURL(fields.lot)});
  if(best)links.push({label:'Broad Exact COA Search',url:genericSearchURL(best)});
  return`<article class="card"><div class="coa-result-title"><strong>${lab?'Likely lab: '+esc(lab.name):'Lab not confidently identified'}</strong><span class="coa-status">${lab?'Detected':'Review'}</span></div>${textNote?`<p class="copy">${textNote}</p>`:''}<div class="coa-fields">${fieldRows(fields)||'<div class="coa-empty">No labeled identifiers were read clearly. Try a sharper screenshot or use manual search.</div>'}</div><div class="coa-actions">${links.map(x=>x.action?`<button class="coa-link coa-action-btn" type="button" data-coa-action="${x.action}">${x.label}</button>`:`<a class="coa-link" target="_blank" rel="noopener" href="${x.url}">${x.label}</a>`).join('')}</div>${lab?`<div class="coa-help">${lab.note}</div>`:'<div class="coa-help">Use the source buttons below or manually enter the clearest lot/report number you can read.</div>'}</article>`;
 }
+
+function freedomConfirmCard(code){
+ const safe=esc(code||'');
+ return `<article class="card" id="freedomConfirmCard">
+   <div class="section-title">Confirm Freedom Search Code</div>
+   <p class="copy">OCR can confuse characters such as <strong>I / 1</strong> and <strong>O / 0</strong>. Check the code against the COA before copying it.</p>
+   <label class="coa-confirm-label" for="freedomCodeInput">Detected Search Code</label>
+   <input class="control coa-confirm-input" id="freedomCodeInput" value="${safe}" autocomplete="off" autocapitalize="characters" spellcheck="false">
+   <div class="coa-help">Edit any incorrect character, then continue.</div>
+   <button class="coa-search-btn" type="button" data-coa-action="freedom-open-confirmed">Copy Confirmed Code & Open Freedom</button>
+ </article>`;
+}
+
 function unknownLabButtons(){return`<article class="card"><div class="section-title">Official verification sites</div><div class="coa-actions">${coaLabs.map(l=>`<a class="coa-link" target="_blank" rel="noopener" href="${l.url}">${l.name}</a>`).join('')}<a class="coa-link" target="_blank" rel="noopener" href="https://www.disclosedlabs.com/coas">Disclosed Labs COA Index</a></div></article>`}
 
 function manualCOASearch(){
@@ -179,13 +193,39 @@ async function handleCOAAction(e){
  e.preventDefault();
  e.stopPropagation();
  const action=btn.dataset.coaAction||'';
- if(action.startsWith('freedom:')){
-   const code=decodeURIComponent(action.slice(8));
-   const freedomURL='https://freedomdiagnosticstesting.com/search-for-your-coa-based-on-the-unique-accession-number/';
+ const freedomURL='https://freedomdiagnosticstesting.com/search-for-your-coa-based-on-the-unique-accession-number/';
+
+ if(action.startsWith('freedom-confirm:')){
+   const code=decodeURIComponent(action.slice('freedom-confirm:'.length));
+   const existing=document.getElementById('freedomConfirmCard');
+   if(existing)existing.remove();
+   btn.closest('.card')?.insertAdjacentHTML('afterend',freedomConfirmCard(code));
+   const input=document.getElementById('freedomCodeInput');
+   if(input){
+     input.focus();
+     input.setSelectionRange(input.value.length,input.value.length);
+   }
+   document.getElementById('freedomConfirmCard')?.scrollIntoView({behavior:'smooth',block:'center'});
+   return;
+ }
+
+ if(action==='freedom-open-confirmed'){
+   const input=document.getElementById('freedomCodeInput');
+   const code=(input?.value||'').trim();
+   if(!code){
+     if(input){input.focus();input.placeholder='Enter the Search Code';}
+     return;
+   }
+
    const tab=window.open(freedomURL,'_blank','noopener');
-   try{await navigator.clipboard.writeText(code);btn.textContent='Search Code copied ✓';}
-   catch{btn.textContent='Freedom opened • copy: '+code;}
+   try{
+     await navigator.clipboard.writeText(code);
+     btn.textContent='Search Code copied ✓';
+   }catch{
+     btn.textContent='Freedom opened • copy: '+code;
+   }
    if(!tab)window.location.href=freedomURL;
+   return;
  }
 }
 if(coaResults)coaResults.addEventListener('click',handleCOAAction);
