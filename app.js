@@ -20,46 +20,93 @@ function esc(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;',
 const coaSearchBtn=document.getElementById('coaSearchBtn');
 const coaQuery=document.getElementById('coaQuery');
 const coaResults=document.getElementById('coaResults');
+const coaImage=document.getElementById('coaImage');
+const coaPreview=document.getElementById('coaPreview');
+const coaPreviewWrap=document.getElementById('coaPreviewWrap');
+const coaAnalyzeBtn=document.getElementById('coaAnalyzeBtn');
+let coaImageURL='';
 
-function searchDisclosedLabs(){
-  if(!coaQuery||!coaResults)return;
-  const raw=coaQuery.value.trim();
-  if(!raw){
-    coaResults.innerHTML='<article class="card"><div class="coa-empty">Enter the lot or batch number first.</div></article>';
-    coaQuery.focus();
-    return;
-  }
+const coaLabs=[
+ {id:'janoshik',name:'Janoshik',patterns:[/JANOSHIK/i,/JANOSHIK\.COM/i],url:'https://janoshik.com/verification/',note:'Official verification uses a Task number and Unique key.'},
+ {id:'freedom',name:'Freedom Diagnostics',patterns:[/FREEDOM\s+DIAGNOSTICS/i,/FREEDOMDIAGNOSTICSTESTING/i],url:'https://freedomdiagnosticstesting.com/search-for-your-coa-based-on-the-unique-accession-number/',note:'Official lookup supports Search Code, accession number or company.'},
+ {id:'vanguard',name:'Vanguard Laboratory',patterns:[/VANGUARD\s+LAB/i,/VERIFIED\s+BY\s+VANGUARD/i,/VERIFIEDBYVANGUARD/i],url:'https://verifiedbyvanguard.com/',note:'Official reporting hub can look up a Report # or COA #.'},
+ {id:'ils',name:'ILS Laboratories',patterns:[/ILS\s+LAB/i,/ILS-LAB\.COM/i,/ILS\s+LABORATOR/i],url:'https://ils-lab.com/verify/',note:'Official verification uses the access code printed by the QR code.'},
+ {id:'horizon',name:'Horizon Analytical',patterns:[/HORIZON\s+ANALYTICAL/i,/HORIZONANALYTICAL/i],url:'https://horizonanalytical.com/verify-coa',note:'Official public certificate lookup.'},
+ {id:'bioregen',name:'BioRegen',patterns:[/BIOREGEN/i,/BIOREGEN\.COM/i],url:'https://bioregen.com/report/',note:'Official report search; BioRegen COAs may show a COA # and Security Key.'},
+ {id:'trustpointe',name:'TrustPointe Analytics',patterns:[/TRUSTPOINTE/i,/TRUSTPOINTE\s+ANALYTICS/i,/TRUSTPOINTELIMS/i],url:'https://trustpointelims.com/',note:'Official LIMS verification uses the key or QR code on the COA.'},
+ {id:'chromate',name:'Chromate',patterns:[/CHROMATE/i,/CHROMATE\.ORG/i],url:'https://chromate.org/verify',note:'Official verification-code portal.'}
+];
 
-  const lot=raw.replace(/^LOT[\s:#-]*/i,'').trim();
-  if(!lot){
-    coaResults.innerHTML='<article class="card"><div class="coa-empty">Enter a valid lot or batch number.</div></article>';
-    return;
-  }
+function labFromText(text){const hits=coaLabs.filter(l=>l.patterns.some(p=>p.test(text)));return hits[0]||null}
+function cleanId(x){return(x||'').replace(/[|,;]+$/,'').trim()}
+function firstMatch(text,patterns){for(const p of patterns){const m=text.match(p);if(m&&m[1])return cleanId(m[1])}return''}
+function extractCOAFields(text){
+ const upper=text.toUpperCase();
+ const lot=firstMatch(upper,[/(?:LOT|LOT\s*NUMBER|BATCH|BATCH\s*NUMBER|BATCH\s*NO\.?)[\s:#-]+([A-Z0-9][A-Z0-9._\/-]{2,35})/i]);
+ const report=firstMatch(upper,[/(?:REPORT|REPORT\s*NO\.?|REPORT\s*NUMBER|COA|COA\s*NO\.?|COA\s*NUMBER|ACCESSION|ACCESSION\s*NUMBER)[\s:#-]+([A-Z0-9][A-Z0-9._\/-]{2,40})/i]);
+ const access=firstMatch(upper,[/(?:ACCESS\s*CODE|VERIFICATION\s*CODE|SECURITY\s*KEY|UNIQUE\s*KEY|VERIFY\s*KEY|KEY)[\s:#-]+([A-Z0-9][A-Z0-9._\/-]{3,40})/i]);
+ const task=firstMatch(upper,[/(?:TASK|TASK\s*NUMBER|TASK\s*NO\.?)[\s:#-]+(\d{4,10})/i]);
+ return{lot,report,access,task};
+}
+function qrOfficial(url){try{const u=new URL(url);return /janoshik\.com|freedomdiagnosticstesting\.com|verifiedbyvanguard\.com|ils-lab\.com|horizonanalytical\.com|bioregen\.com|trustpointelims\.com|trustpointeanalytics\.com|chromate\.org|disclosedlabs\.com/i.test(u.hostname)}catch{return false}}
 
-  if(coaSearchBtn){
-    coaSearchBtn.disabled=true;
-    coaSearchBtn.textContent='Opening Disclosed Labs…';
-  }
+function disclosedLotURL(lot){return'https://www.disclosedlabs.com/lot/'+encodeURIComponent(lot)}
+function genericSearchURL(raw){return'https://www.google.com/search?q='+encodeURIComponent('"'+raw+'" COA peptide')}
+function fieldRows(f){return[['Lot / batch',f.lot],['Report / COA / accession',f.report],['Task number',f.task],['Access / unique / security key',f.access]].filter(x=>x[1]).map(x=>`<div class="coa-field"><span>${x[0]}</span><strong>${esc(x[1])}</strong></div>`).join('')}
+function resultCard(lab,fields,qrUrl,textNote=''){
+ const best=fields.lot||fields.report||fields.access||fields.task||'';
+ const links=[];
+ if(qrUrl&&qrOfficial(qrUrl))links.push({label:'Open QR Verification',url:qrUrl});
+ if(lab)links.push({label:`Verify at ${lab.name}`,url:lab.url});
+ if(fields.lot)links.push({label:'Search Lot on Disclosed Labs',url:disclosedLotURL(fields.lot)});
+ if(best)links.push({label:'Broad Exact COA Search',url:genericSearchURL(best)});
+ return`<article class="card"><div class="coa-result-title"><strong>${lab?'Likely lab: '+esc(lab.name):'Lab not confidently identified'}</strong><span class="coa-status">${lab?'Detected':'Review'}</span></div>${textNote?`<p class="copy">${textNote}</p>`:''}<div class="coa-fields">${fieldRows(fields)||'<div class="coa-empty">No labeled identifiers were read clearly. Try a sharper screenshot or use manual search.</div>'}</div><div class="coa-actions">${links.map(x=>`<a class="coa-link" target="_blank" rel="noopener" href="${x.url}">${x.label}</a>`).join('')}</div>${lab?`<div class="coa-help">${lab.note}</div>`:'<div class="coa-help">Use the source buttons below or manually enter the clearest lot/report number you can read.</div>'}</article>`;
+}
+function unknownLabButtons(){return`<article class="card"><div class="section-title">Official verification sites</div><div class="coa-actions">${coaLabs.map(l=>`<a class="coa-link" target="_blank" rel="noopener" href="${l.url}">${l.name}</a>`).join('')}<a class="coa-link" target="_blank" rel="noopener" href="https://www.disclosedlabs.com/coas">Disclosed Labs COA Index</a></div></article>`}
 
-  coaResults.innerHTML=`<article class="card"><div class="coa-result-title"><strong>Searching Disclosed Labs</strong><span class="coa-status">Lot lookup</span></div><p class="copy">Opening results for <strong>${esc(lot)}</strong>…</p></article>`;
-
-  const url='https://www.disclosedlabs.com/lot/'+encodeURIComponent(lot);
-  setTimeout(()=>{
-    window.location.href=url;
-    if(coaSearchBtn){
-      coaSearchBtn.disabled=false;
-      coaSearchBtn.textContent='Search Disclosed Labs';
-    }
-  },180);
+function manualCOASearch(){
+ const raw=(coaQuery?.value||'').trim();
+ if(!raw){coaResults.innerHTML='<article class="card"><div class="coa-empty">Enter a lot, batch, COA, report, task or access code first.</div></article>';coaQuery?.focus();return}
+ const fields=extractCOAFields(raw.includes(':')?raw:'LOT: '+raw);
+ const lab=labFromText(raw);
+ if(!fields.lot&&!fields.report&&!fields.access&&!fields.task)fields.lot=raw;
+ coaResults.innerHTML=resultCard(lab,fields,'','Use the detected identifier to search the broad COA index or open an official laboratory verifier.')+unknownLabButtons();
+ coaResults.scrollIntoView({behavior:'smooth',block:'start'});
 }
 
-if(coaSearchBtn)coaSearchBtn.addEventListener('click',searchDisclosedLabs);
-if(coaQuery)coaQuery.addEventListener('keydown',e=>{
-  if(e.key==='Enter'){
-    e.preventDefault();
-    searchDisclosedLabs();
+async function detectQR(file){
+ if(!('BarcodeDetector'in window))return'';
+ try{const d=new BarcodeDetector({formats:['qr_code']});const bmp=await createImageBitmap(file);const codes=await d.detect(bmp);bmp.close();return codes[0]?.rawValue||''}catch{return''}
+}
+async function analyzeCOAImage(){
+ const file=coaImage?.files?.[0];if(!file)return;
+ coaAnalyzeBtn.disabled=true;coaAnalyzeBtn.textContent='Reading COA…';
+ coaResults.innerHTML='<article class="card"><div class="coa-result-title"><strong>Reading screenshot</strong><span class="coa-status">OCR</span></div><p class="copy" id="coaProgress">Looking for lab name, lot/batch, report number and verification code…</p></article>';
+ try{
+  const qrPromise=detectQR(file);
+  if(!window.Tesseract)throw new Error('OCR library unavailable');
+  const res=await Tesseract.recognize(file,'eng',{logger:m=>{const p=document.getElementById('coaProgress');if(p&&m.status==='recognizing text')p.textContent='Reading text… '+Math.round((m.progress||0)*100)+'%'}});
+  const text=res?.data?.text||'';
+  const qr=await qrPromise;
+  const lab=labFromText(text+' '+qr);
+  const fields=extractCOAFields(text);
+  if(lab?.id==='janoshik'){
+   if(!fields.task)fields.task=firstMatch(text,[/(?:TASK|TASK\s*NUMBER|TASK\s*NO\.?)[\s:#-]+(\d{4,10})/i]);
+   if(!fields.access)fields.access=firstMatch(text,[/(?:UNIQUE\s*KEY|KEY)[\s:#-]+([A-Z0-9]{8,24})/i]);
   }
-});
+  if(lab?.id==='ils'&&!fields.access)fields.access=firstMatch(text,[/(?:ACCESS\s*CODE)[\s:#-]+([A-Z0-9]{6,12})/i]);
+  if(lab?.id==='bioregen'&&!fields.access)fields.access=firstMatch(text,[/(?:SECURITY\s*KEY)[\s:#-]+([A-Z0-9]{6,30})/i]);
+  coaResults.innerHTML=resultCard(lab,fields,qr,lab?'The screenshot appears to match this laboratory. Confirm the details on the official site before treating it as verified.':'I could not confidently identify the laboratory from the screenshot.')+(!lab?unknownLabButtons():'');
+  coaResults.scrollIntoView({behavior:'smooth',block:'start'});
+ }catch(err){
+  console.error(err);coaResults.innerHTML='<article class="card"><div class="coa-empty">I could not read this image in the browser. Try a clearer screenshot, or enter the lot/report number manually below.</div></article>'+unknownLabButtons();
+ }finally{coaAnalyzeBtn.disabled=false;coaAnalyzeBtn.textContent='Read & Identify COA'}
+}
+
+if(coaImage)coaImage.addEventListener('change',()=>{const f=coaImage.files?.[0];if(!f)return;if(coaImageURL)URL.revokeObjectURL(coaImageURL);coaImageURL=URL.createObjectURL(f);coaPreview.src=coaImageURL;coaPreviewWrap.hidden=false;coaResults.innerHTML='';});
+if(coaAnalyzeBtn)coaAnalyzeBtn.addEventListener('click',analyzeCOAImage);
+if(coaSearchBtn)coaSearchBtn.addEventListener('click',manualCOASearch);
+if(coaQuery)coaQuery.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();manualCOASearch()}});
 
 setMode(localStorage.getItem('research:mode')==='coa'?'coa':'research');
 

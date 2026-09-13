@@ -43,31 +43,51 @@
       <article class="card coa-hero">
         <div class="sect">Certificate verification</div>
         <h2>COA Search</h2>
-        <p class="copy">Enter the lot or batch number printed on the vial or COA. Search opens the matching Disclosed Labs lot page.</p>
+        <p class="copy">Upload a COA screenshot or enter an identifier. The app will try to identify the testing lab, read the important numbers and send you to the correct official verification page.</p>
       </article>
 
       <article class="card">
-        <div class="section-title">Lot / batch number</div>
-        <input class="control" id="coaQuery" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="Example: RT200326">
-        <button class="coa-search-btn" id="coaSearchBtn" type="button">Search Disclosed Labs</button>
-        <div class="coa-help">Disclosed Labs aggregates public COAs from multiple testing labs and vendors. If the lot is indexed, its matching record(s) will be shown there.</div>
+        <div class="section-title">Upload COA screenshot</div>
+        <label class="coa-upload" for="coaImage">
+          <span class="coa-upload-icon">▣</span>
+          <strong>Choose COA Screenshot</strong>
+          <span>Photo, screenshot or saved image</span>
+        </label>
+        <input id="coaImage" type="file" accept="image/*" hidden>
+        <div id="coaPreviewWrap" class="coa-preview-wrap" hidden>
+          <img id="coaPreview" class="coa-preview" alt="COA preview">
+          <button class="coa-search-btn" id="coaAnalyzeBtn" type="button">Read & Identify COA</button>
+        </div>
+        <div class="coa-help">The image is read in your browser. OCR quality depends on how clear and straight the screenshot is.</div>
+      </article>
+
+      <article class="card">
+        <div class="section-title">Or search manually</div>
+        <input class="control" id="coaQuery" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="Lot / Batch / COA / Report / Access Code">
+        <button class="coa-search-btn" id="coaSearchBtn" type="button">Find Verification Source</button>
+        <div class="coa-help">Lot/batch number is usually best for finding a report. A lab-specific report, accession, task or access code is usually best for verifying it.</div>
       </article>
 
       <div id="coaResults"></div>
 
       <article class="card">
-        <div class="section-title">COA source</div>
+        <div class="section-title">Major verification sources</div>
         <div class="coa-source-list">
-          <div class="coa-source-item"><strong>Disclosed Labs</strong><span>Lot lookup across its indexed public COA corpus</span></div>
-        </div>
-        <div class="coa-actions">
-          <a class="coa-link" target="_blank" rel="noopener" href="https://www.disclosedlabs.com/coas">Browse Disclosed Labs COAs</a>
+          <div class="coa-source-item"><strong>Disclosed Labs</strong><span>Aggregated public COA index</span></div>
+          <div class="coa-source-item"><strong>Janoshik</strong><span>Task number + unique key</span></div>
+          <div class="coa-source-item"><strong>Freedom Diagnostics</strong><span>Search code / accession number</span></div>
+          <div class="coa-source-item"><strong>Vanguard Laboratory</strong><span>Report or COA number</span></div>
+          <div class="coa-source-item"><strong>ILS Laboratories</strong><span>7–8 character access code / QR</span></div>
+          <div class="coa-source-item"><strong>Horizon Analytical</strong><span>Public certificate lookup</span></div>
+          <div class="coa-source-item"><strong>BioRegen</strong><span>COA number + security key / report search</span></div>
+          <div class="coa-source-item"><strong>TrustPointe Analytics</strong><span>LIMS key / QR verification</span></div>
+          <div class="coa-source-item"><strong>Chromate</strong><span>Verification-code portal</span></div>
         </div>
       </article>
 
       <article class="card coa-caution">
-        <div class="section-title">What a match means</div>
-        <p class="copy">A matching COA record shows that Disclosed Labs has indexed a report using that lot or batch identifier. Always compare the original report, vendor, testing lab and product details with the item you are checking.</p>
+        <div class="section-title">What verification means</div>
+        <p class="copy">A successful lookup confirms that the laboratory or index has a matching report. Compare the peptide, vendor, lot, dates and test details on the official report with the product you are checking.</p>
       </article>
     </section>
 
@@ -85,6 +105,7 @@
     </section>
   </div>
 
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
   <script src="./app.js"></script>
 </body>
 </html>
